@@ -10,11 +10,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 
 DEBUG = True
 
-<<<<<<< HEAD
-ALLOWED_HOSTS = ['https://philosophical-florence-ecpar-8672eb7c.koyeb.app']
-=======
 ALLOWED_HOSTS = ['philosophical-florence-ecpar-8672eb7c.koyeb.app']
->>>>>>> a2499116f1effc798d905151728b46e507ca890e
 
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
