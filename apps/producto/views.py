@@ -53,14 +53,27 @@ class CreatePay(APIView):
         try:
             producto = Producto.objects.get(id=partitura_id)
 
+            archivo_url = producto.archivo.url  
+            nombre_archivo = os.path.basename(archivo_url)
+
+
+            response = requests.get(archivo_url)
+            response.raise_for_status()
+
+            with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                tmp_file.write(response.content)
+                tmp_file_path = tmp_file.name
+
             email = EmailMessage(
                 subject="Partitura",
-                body=producto.nombre,
+                body=f"Adjunto tu partitura: {producto.nombre}",
                 to=[to_email]
             )
 
-            email.attach_file(producto.archivo.path)
+            email.attach_file(tmp_file_path)
             email.send()
+
+            os.remove(tmp_file_path)
 
         except Exception as e:
             print("Error enviando email:", e)
@@ -115,7 +128,7 @@ class CreatePay(APIView):
 
             bodyPay = {
                 'token': str(res['id']),
-                'transaction_amount': int(Producto.objects.get(id=request.data['partituraId']).precio),
+                'transaction_amount': int(Producto.objects.get(id=request.data['partituraId']).precio   ),
                 'description': str(Producto.objects.get(id=request.data['partituraId']).nombre),
                 'installments': 1,
                 'payment_method_id': 'yape',
