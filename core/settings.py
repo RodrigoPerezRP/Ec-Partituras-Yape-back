@@ -125,7 +125,7 @@ STORAGES = {
 }
 
 CORS_ALLOWED_ORIGINS = [
-    "https://philosophical-florence-ecpar-8672eb7c.koyeb.app",
+    "https://ec-partituras-yape-front.vercel.app",
 ]
 
 REST_FRAMEWORK = {
