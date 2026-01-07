@@ -10,6 +10,8 @@ from rest_framework.exceptions import ValidationError
 from django.core.mail import EmailMessage
 from twilio.rest import Client
 from django.conf import settings
+from cloudinary.utils import cloudinary_url
+
 
 from .models import (
     CategoriaProducto,
