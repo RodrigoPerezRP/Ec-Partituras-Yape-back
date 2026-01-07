@@ -25,7 +25,9 @@ DJANGO_APPS = [
 
 PROJECT_APPS = [
     'rest_framework',
-    'corsheaders'    
+    'corsheaders',
+    "cloudinary",
+    "cloudinary_storage",
 ]
 
 THIRD_PARTY_APPS = [
@@ -110,13 +112,12 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-MEDIA_URL = 'media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 
 STORAGES = {
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    }
+    "default": {
+        "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+    },
 }
 
 CORS_ALLOWED_ORIGINS = [
@@ -138,3 +139,10 @@ EMAIL_PORT=os.getenv('EMAIL_PORT')
 EMAIL_USE_TLS=os.getenv('EMAIL_USE_TLS')
 EMAIL_HOST_USER=os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD=os.getenv('EMAIL_HOST_PASSWORD')
+
+#CLOUDINARY
+CLOUDINARY_STORAGE = {
+    "CLOUD_NAME": os.environ.get("CLOUDINARY_CLOUD_NAME"),
+    "API_KEY": os.environ.get("CLOUDINARY_API_KEY"),
+    "API_SECRET": os.environ.get("CLOUDINARY_API_SECRET"),
+}
