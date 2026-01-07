@@ -10,7 +10,11 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 
 DEBUG = True
 
+<<<<<<< HEAD
 ALLOWED_HOSTS = ['https://philosophical-florence-ecpar-8672eb7c.koyeb.app']
+=======
+ALLOWED_HOSTS = ['philosophical-florence-ecpar-8672eb7c.koyeb.app']
+>>>>>>> a2499116f1effc798d905151728b46e507ca890e
 
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
@@ -122,6 +126,10 @@ STORAGES = {
 CORS_ALLOWED_ORIGINS = [
     "https://philosophical-florence-ecpar-8672eb7c.koyeb.app",
 ]
+<<<<<<< HEAD
+=======
+
+>>>>>>> a2499116f1effc798d905151728b46e507ca890e
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50
