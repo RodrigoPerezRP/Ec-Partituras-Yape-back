@@ -128,7 +128,7 @@ class CreatePay(APIView):
 
             bodyPay = {
                 'token': str(res['id']),
-                'transaction_amount': int(Producto.objects.get(id=request.data['partituraId']).precio   ),
+                'transaction_amount': int(Producto.objects.get(id=request.data['partituraId']).precio),
                 'description': str(Producto.objects.get(id=request.data['partituraId']).nombre),
                 'installments': 1,
                 'payment_method_id': 'yape',
