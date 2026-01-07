@@ -119,7 +119,9 @@ STORAGES = {
     }
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    "https://philosophical-florence-ecpar-8672eb7c.koyeb.app",
+]
 
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
