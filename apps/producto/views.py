@@ -36,53 +36,19 @@ class CreatePay(APIView):
     def enviar_partitura_email(self, to_email, partitura_id):
         try:
             producto = Producto.objects.get(id=partitura_id)
-            print(f"📦 Procesando producto: {producto.nombre}")
-            
-            public_id = producto.archivo.name  # Ej: "files/MARCHA_tupac_amaru_chavez_more_scvwyj.pdf"
-            print(f"📁 Public ID (desde Django): {public_id}")
 
-            # Generar URL firmada — ¡usa el public_id tal cual!
-            signed_url, _ = cloudinary.utils.cloudinary_url(
-                public_id,
-                resource_type="raw",      # Obligatorio para PDFs
-                sign_url=True,
-                expires_at=int(time.time()) + 300  # 5 minutos
-            )
-
-            print(f"🔗 URL firmada generada")
-            response = requests.get(signed_url)
-            response.raise_for_status()
-
-            file_content = response.content
-            if not file_content:
-                raise Exception("Archivo descargado está vacío")
-
-            print(f"✅ Archivo descargado ({len(file_content)} bytes)")
-
-            nombre_seguro = producto.nombre.replace(' ', '_').replace('/', '_')
-            nombre_archivo = f"{nombre_seguro}.pdf"
-
-            from_email = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@tudominio.com')
             email = EmailMessage(
-                subject=f"🎵 Tu partitura: {producto.nombre}",
-                body=f"""¡Hola! Te enviamos la partitura que has comprado:
-    🎼 {producto.nombre}
-    ✍️ Arreglista: {producto.arreglista}
-    ⚡ Dificultad: {producto.get_dificultad_display()}
-
-    El archivo PDF está adjunto a este correo.
-    ¡Gracias por tu compra!""",
-                from_email=from_email,
+                subject="Correo de prueba",
+                body="Mensaje de prueba",
+                from_email=os.getenv('DEFAULT_FROM_EMAIL'),
                 to=[to_email]
             )
-            email.attach(nombre_archivo, file_content, 'application/pdf')
             email.send(fail_silently=False)
-            print("✅ Email enviado exitosamente")
+
+            print("✅ Email enviado")
 
         except Exception as e:
-            print(f"❌ Error enviando email: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"❌ Error: {e}")
 
     def validate_required_fields(self, request, required_fields):
         errors = {}
