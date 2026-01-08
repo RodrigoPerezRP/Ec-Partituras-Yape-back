@@ -1,11 +1,11 @@
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import get_object_or_404
 
 from rest_framework.views import APIView
 from rest_framework.generics import ListAPIView
 from rest_framework import status 
 from rest_framework.response import Response
 from dotenv import load_dotenv
-import os, requests, uuid, threading, tempfile, time
+import os, requests, uuid, threading, time
 from rest_framework.exceptions import ValidationError
 from django.core.mail import EmailMessage
 
@@ -23,32 +23,43 @@ from .serializers import (
 
 load_dotenv()
 
-cloudinary.config(
-    cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
-    api_key=os.getenv('CLOUDINARY_API_KEY'),
-    api_secret=os.getenv('CLOUDINARY_API_SECRET'),
-    secure=True
-)
 
 
 class CreatePay(APIView):
 
     def enviar_partitura_email(self, to_email, partitura_id):
-        try:
-            producto = Producto.objects.get(id=partitura_id)
 
-            email = EmailMessage(
-                subject="Correo de prueba",
-                body="Mensaje de prueba",
-                from_email=os.getenv('DEFAULT_FROM_EMAIL'),
-                to=[to_email]
-            )
-            email.send(fail_silently=False)
+        cloudinary.config(
+            cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+            api_key=os.getenv('CLOUDINARY_API_KEY'),
+            api_secret=os.getenv('CLOUDINARY_API_SECRET'),
+            secure=True
+        )
 
-            print("✅ Email enviado")
 
-        except Exception as e:
-            print(f"❌ Error: {e}")
+        producto = Producto.objects.get(id=partitura_id)
+
+        public_id = producto.archivo.name
+
+        url, _ = cloudinary.utils.cloudinary_url(
+            public_id,
+            resource_type="raw",
+            sign_url=True,
+            expires_at=int(time.time()) + 300
+        )
+
+        response = requests.get(url)
+        response.raise_for_status()
+
+        email = EmailMessage(
+            subject="Partitura",
+            body="",
+            from_email=os.getenv('DEFAULT_FROM_EMAIL', 'noreply@tudominio.com'),
+            to=[to_email]
+        )
+
+        email.attach("partitura.pdf", response.content, "application/pdf")
+        email.send()
 
     def validate_required_fields(self, request, required_fields):
         errors = {}
