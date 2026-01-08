@@ -5,24 +5,25 @@ from rest_framework.generics import ListAPIView
 from rest_framework import status 
 from rest_framework.response import Response
 from dotenv import load_dotenv
-import os, requests, uuid, json, threading
+import os, requests, uuid, json, threading, tempfile
 from rest_framework.exceptions import ValidationError
 from django.core.mail import EmailMessage
 from twilio.rest import Client
 from django.conf import settings
+import cloudinary
+import cloudinary.api
 from cloudinary.utils import cloudinary_url
 
+from apps.pagos.models import Pago
 
 from .models import (
-    CategoriaProducto,
     Producto
 )
 from .serializers import (
-    CategoriaProductoSerializer,
     ProductoSerializer
 )
 
-from apps.pagos.models import Pago
+
 
 class ListPartituras(ListAPIView):
     
@@ -54,31 +55,95 @@ class CreatePay(APIView):
     def enviar_partitura_email(self, to_email, partitura_id):
         try:
             producto = Producto.objects.get(id=partitura_id)
-
-            archivo_url = producto.archivo.url  
-            nombre_archivo = os.path.basename(archivo_url)
-
-
-            response = requests.get(archivo_url)
+            
+            # Obtener la URL del archivo
+            archivo_field = producto.archivo
+            
+            # Extraer el public_id del archivo en Cloudinary
+            # El campo FileField en Django con Cloudinary normalmente almacena la URL completa
+            url_completa = archivo_field.url
+            
+            # Parsear el public_id de la URL de Cloudinary
+            # Ejemplo: https://res.cloudinary.com/cloud_name/image/upload/v1234567/folder/filename.pdf
+            from urllib.parse import urlparse
+            
+            parsed_url = urlparse(url_completa)
+            path_parts = parsed_url.path.split('/')
+            
+            # Encontrar el índice de 'upload' y obtener todo lo que viene después
+            try:
+                upload_index = path_parts.index('upload') + 1
+                # Unir todas las partes después de 'upload'
+                public_id_with_version = '/'.join(path_parts[upload_index:])
+                
+                # Remover la versión (v1234567/) si existe
+                if public_id_with_version.startswith('v'):
+                    # Encontrar el primer / después de la versión
+                    slash_index = public_id_with_version.find('/')
+                    if slash_index != -1:
+                        public_id = public_id_with_version[slash_index + 1:]
+                    else:
+                        public_id = public_id_with_version
+                else:
+                    public_id = public_id_with_version
+                
+                # Remover la extensión del archivo
+                public_id = os.path.splitext(public_id)[0]
+                
+            except ValueError:
+                # Si no encuentra 'upload' en la ruta, usar el nombre del archivo
+                public_id = os.path.splitext(os.path.basename(archivo_field.name))[0]
+            
+            # Generar URL de descarga con el SDK de Cloudinary
+            download_url, options = cloudinary_url(
+                public_id,
+                format='pdf',
+                flags='attachment',
+                secure=True
+            )
+            
+            # Descargar el archivo desde Cloudinary
+            response = requests.get(download_url, timeout=30)
             response.raise_for_status()
-
-            with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+            
+            # Crear archivo temporal
+            nombre_archivo = f"{producto.nombre.replace(' ', '_')}.pdf"
+            with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pdf') as tmp_file:
                 tmp_file.write(response.content)
                 tmp_file_path = tmp_file.name
-
+            
+            # Enviar email
             email = EmailMessage(
-                subject="Partitura",
-                body=f"Adjunto tu partitura: {producto.nombre}",
+                subject=f"Tu partitura: {producto.nombre}",
+                body=f"""Hola,
+
+    Adjunto encontrarás la partitura que has comprado: {producto.nombre}
+
+    ¡Gracias por tu compra!
+
+    Saludos,
+    Equipo de Partituras""",
+                from_email=os.getenv('DEFAULT_FROM_EMAIL', 'noreply@tudominio.com'),
                 to=[to_email]
             )
-
-            email.attach_file(tmp_file_path)
+            
+            # Adjuntar el archivo
+            with open(tmp_file_path, 'rb') as f:
+                email.attach(
+                    nombre_archivo,
+                    f.read(),
+                    'application/pdf'
+                )
+            
             email.send()
-
-            os.remove(tmp_file_path)
-
+            
+            # Limpiar archivo temporal
+            os.unlink(tmp_file_path)
+            
+            print(f"✅ Email enviado exitosamente a {to_email}")
+            
         except Exception as e:
-            print("Error enviando email:", e)
+            print(f"❌ Error enviando email: {str(e)}")
 
     def validate_required_fields(self, request, required_fields):
         errors = {}
