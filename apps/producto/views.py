@@ -38,26 +38,20 @@ class CreatePay(APIView):
             producto = Producto.objects.get(id=partitura_id)
             print(f"📦 Procesando producto: {producto.nombre}")
             
-            # El campo archivo.name en Django normalmente contiene el "public_id"
-            # Ej: "files/MARCHA_tupac_amaru_chavez_more_scvwyj.pdf"
-            # Pero Cloudinary no quiere la extensión en el public_id para raw
-            public_id = producto.archivo.name
-            if public_id.endswith('.pdf'):
-                public_id = public_id[:-4]  # Quita la extensión .pdf
+            public_id = producto.archivo.name  # Ej: "files/MARCHA_tupac_amaru_chavez_more_scvwyj.pdf"
+            print(f"📁 Public ID (desde Django): {public_id}")
 
-            print(f"📁 Public ID en Cloudinary: {public_id}")
-
-            # Generar URL firmada para descargar el archivo raw
+            # Generar URL firmada — ¡usa el public_id tal cual!
             signed_url, _ = cloudinary.utils.cloudinary_url(
                 public_id,
-                resource_type="raw",
+                resource_type="raw",      # Obligatorio para PDFs
                 sign_url=True,
-                expires_at=int(time.time()) + 300  # Válida 5 minutos
+                expires_at=int(time.time()) + 300  # 5 minutos
             )
 
             print(f"🔗 URL firmada generada")
             response = requests.get(signed_url)
-            response.raise_for_status()  # Lanza excepción si falla
+            response.raise_for_status()
 
             file_content = response.content
             if not file_content:
@@ -65,17 +59,16 @@ class CreatePay(APIView):
 
             print(f"✅ Archivo descargado ({len(file_content)} bytes)")
 
-            # Nombre seguro para el archivo adjunto
             nombre_seguro = producto.nombre.replace(' ', '_').replace('/', '_')
             nombre_archivo = f"{nombre_seguro}.pdf"
 
-            # Preparar correo
             from_email = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@tudominio.com')
             email = EmailMessage(
                 subject=f"🎵 Tu partitura: {producto.nombre}",
                 body=f"""¡Hola! Te enviamos la partitura que has comprado:
     🎼 {producto.nombre}
     ✍️ Arreglista: {producto.arreglista}
+    ⚡ Dificultad: {producto.get_dificultad_display()}
 
     El archivo PDF está adjunto a este correo.
     ¡Gracias por tu compra!""",
