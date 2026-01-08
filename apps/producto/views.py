@@ -10,9 +10,7 @@ from rest_framework.exceptions import ValidationError
 from django.core.mail import EmailMessage
 
 import cloudinary
-import cloudinary.api
-from cloudinary.utils import cloudinary_url
-from urllib.parse import urlparse
+import cloudinary.utils
 
 from apps.pagos.models import Pago
 
@@ -32,87 +30,59 @@ cloudinary.config(
     secure=True
 )
 
-class ListPartituras(ListAPIView):
-    
-    queryset = Producto.objects.all()
-    serializer_class = ProductoSerializer
-
-class ListPartiturasDestacadas(ListAPIView):
-    
-    serializer_class = ProductoSerializer
-
-    def get_queryset(self):
-        return Producto.objects.filter(tieneDestacado=True)
-
-class DetailPartitura(APIView):
-
-    def get(self,request,*args,**kwargs):
-
-        slug = kwargs.get('slug')
-
-        partitura = get_object_or_404(Producto, slug=slug)
-
-        serializer = ProductoSerializer(partitura, many=False)
-
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-
-
-
-
-
-
 
 class CreatePay(APIView):
 
     def enviar_partitura_email(self, to_email, partitura_id):
         try:
             producto = Producto.objects.get(id=partitura_id)
-
             print(f"📦 Procesando producto: {producto.nombre}")
-            print(f"📁 Archivo: {producto.archivo.name}")
+            
+            # El campo archivo.name en Django normalmente contiene el "public_id"
+            # Ej: "files/MARCHA_tupac_amaru_chavez_more_scvwyj.pdf"
+            # Pero Cloudinary no quiere la extensión en el public_id para raw
+            public_id = producto.archivo.name
+            if public_id.endswith('.pdf'):
+                public_id = public_id[:-4]  # Quita la extensión .pdf
 
-            # 🔹 Abrir archivo desde Cloudinary vía Django Storage
-            producto.archivo.open('rb')
-            file_content = producto.archivo.read()
-            producto.archivo.close()
+            print(f"📁 Public ID en Cloudinary: {public_id}")
 
+            # Generar URL firmada para descargar el archivo raw
+            signed_url, _ = cloudinary.utils.cloudinary_url(
+                public_id,
+                resource_type="raw",
+                sign_url=True,
+                expires_at=int(time.time()) + 300  # Válida 5 minutos
+            )
+
+            print(f"🔗 URL firmada generada")
+            response = requests.get(signed_url)
+            response.raise_for_status()  # Lanza excepción si falla
+
+            file_content = response.content
             if not file_content:
-                raise Exception("Archivo vacío o no accesible")
+                raise Exception("Archivo descargado está vacío")
 
-            print(f"📏 Tamaño archivo: {len(file_content)} bytes")
+            print(f"✅ Archivo descargado ({len(file_content)} bytes)")
 
+            # Nombre seguro para el archivo adjunto
             nombre_seguro = producto.nombre.replace(' ', '_').replace('/', '_')
             nombre_archivo = f"{nombre_seguro}.pdf"
 
+            # Preparar correo
             from_email = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@tudominio.com')
-
             email = EmailMessage(
                 subject=f"🎵 Tu partitura: {producto.nombre}",
-                body=f"""¡Hola!
-
-    Te enviamos la partitura que has comprado:
-
+                body=f"""¡Hola! Te enviamos la partitura que has comprado:
     🎼 {producto.nombre}
     ✍️ Arreglista: {producto.arreglista}
-    ⚡ Dificultad: {producto.get_dificultad_display()}
 
     El archivo PDF está adjunto a este correo.
-
-    ¡Gracias por tu compra!
-    """,
+    ¡Gracias por tu compra!""",
                 from_email=from_email,
                 to=[to_email]
             )
-
-            # 📎 Adjuntar archivo directamente
-            email.attach(
-                filename=nombre_archivo,
-                content=file_content,
-                mimetype='application/pdf'
-            )
-
-            print("✉️ Enviando email...")
+            email.attach(nombre_archivo, file_content, 'application/pdf')
             email.send(fail_silently=False)
             print("✅ Email enviado exitosamente")
 
@@ -214,3 +184,29 @@ class CreatePay(APIView):
             return Response({"message": "Algo salio mal en el Pago"}, status=status.HTTP_400_BAD_REQUEST)
             
         return Response({"message": "Algo salio mal en el token"}, status=status.HTTP_400_BAD_REQUEST)
+    
+
+
+class ListPartituras(ListAPIView):
+    
+    queryset = Producto.objects.all()
+    serializer_class = ProductoSerializer
+
+class ListPartiturasDestacadas(ListAPIView):
+    
+    serializer_class = ProductoSerializer
+
+    def get_queryset(self):
+        return Producto.objects.filter(tieneDestacado=True)
+
+class DetailPartitura(APIView):
+
+    def get(self,request,*args,**kwargs):
+
+        slug = kwargs.get('slug')
+
+        partitura = get_object_or_404(Producto, slug=slug)
+
+        serializer = ProductoSerializer(partitura, many=False)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
