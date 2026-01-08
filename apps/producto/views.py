@@ -5,17 +5,14 @@ from rest_framework.generics import ListAPIView
 from rest_framework import status 
 from rest_framework.response import Response
 from dotenv import load_dotenv
-import os, requests, uuid, json, threading, tempfile, time
+import os, requests, uuid, threading, tempfile, time
 from rest_framework.exceptions import ValidationError
 from django.core.mail import EmailMessage
-from twilio.rest import Client
-from django.conf import settings
+
 import cloudinary
 import cloudinary.api
 from cloudinary.utils import cloudinary_url
 from urllib.parse import urlparse
-import cloudinary.uploader
-
 
 from apps.pagos.models import Pago
 
@@ -25,6 +22,8 @@ from .models import (
 from .serializers import (
     ProductoSerializer
 )
+
+load_dotenv()
 
 cloudinary.config(
     cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
@@ -73,29 +72,20 @@ class CreatePay(APIView):
             print(f"📦 Procesando producto: {producto.nombre}")
             print(f"📁 Archivo: {producto.archivo.name}")
 
-            # 🔹 Obtener public_id limpio
-            public_id = os.path.splitext(producto.archivo.name)[0]
-            print(f"🎯 Public ID: {public_id}")
-
-            # 🔹 Descargar archivo vía SDK (firma automática)
-            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-            tmp_file.close()
-
-            cloudinary.uploader.download(
-                public_id=public_id,
-                resource_type="raw",
-                target=tmp_file.name
-            )
-
-            print(f"💾 Archivo descargado: {tmp_file.name}")
-
-            with open(tmp_file.name, "rb") as f:
-                file_content = f.read()
+            # 🔹 Abrir archivo desde Cloudinary vía Django Storage
+            producto.archivo.open('rb')
+            file_content = producto.archivo.read()
+            producto.archivo.close()
 
             if not file_content:
-                raise Exception("Archivo vacío")
+                raise Exception("Archivo vacío o no accesible")
 
-            nombre_archivo = f"{producto.nombre.replace(' ', '_')}.pdf"
+            print(f"📏 Tamaño archivo: {len(file_content)} bytes")
+
+            nombre_seguro = producto.nombre.replace(' ', '_').replace('/', '_')
+            nombre_archivo = f"{nombre_seguro}.pdf"
+
+            from_email = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@tudominio.com')
 
             email = EmailMessage(
                 subject=f"🎵 Tu partitura: {producto.nombre}",
@@ -107,29 +97,30 @@ class CreatePay(APIView):
     ✍️ Arreglista: {producto.arreglista}
     ⚡ Dificultad: {producto.get_dificultad_display()}
 
+    El archivo PDF está adjunto a este correo.
+
     ¡Gracias por tu compra!
     """,
-                from_email=os.getenv("DEFAULT_FROM_EMAIL"),
+                from_email=from_email,
                 to=[to_email]
             )
 
+            # 📎 Adjuntar archivo directamente
             email.attach(
-                nombre_archivo,
-                file_content,
-                "application/pdf"
+                filename=nombre_archivo,
+                content=file_content,
+                mimetype='application/pdf'
             )
 
+            print("✉️ Enviando email...")
             email.send(fail_silently=False)
-            print("✅ Email enviado")
-
-            os.unlink(tmp_file.name)
+            print("✅ Email enviado exitosamente")
 
         except Exception as e:
             print(f"❌ Error enviando email: {e}")
             import traceback
             traceback.print_exc()
 
-    
     def validate_required_fields(self, request, required_fields):
         errors = {}
 
