@@ -5,7 +5,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework import status 
 from rest_framework.response import Response
 from dotenv import load_dotenv
-import os, requests, uuid, json, threading, tempfile
+import os, requests, uuid, json, threading, tempfile, time
 from rest_framework.exceptions import ValidationError
 from django.core.mail import EmailMessage
 from twilio.rest import Client
@@ -13,6 +13,7 @@ from django.conf import settings
 import cloudinary
 import cloudinary.api
 from cloudinary.utils import cloudinary_url
+from urllib.parse import urlparse
 
 from apps.pagos.models import Pago
 
@@ -55,100 +56,156 @@ class DetailPartitura(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+
+
+
+
+
+
 class CreatePay(APIView):
 
     def enviar_partitura_email(self, to_email, partitura_id):
         try:
             producto = Producto.objects.get(id=partitura_id)
             
-            # Obtener la URL del archivo
-            archivo_field = producto.archivo
+            print(f"📦 Procesando producto: {producto.nombre}")
+            print(f"📁 Archivo: {producto.archivo.name}")
+            print(f"🔗 URL original: {producto.archivo.url}")
             
-            # Extraer el public_id del archivo en Cloudinary
-            # El campo FileField en Django con Cloudinary normalmente almacena la URL completa
-            url_completa = archivo_field.url
+            # OPCIÓN 1: Método directo - Usar la URL con autenticación
+            # ========================================================
+            archivo_url = producto.archivo.url
             
-            # Parsear el public_id de la URL de Cloudinary
-            # Ejemplo: https://res.cloudinary.com/cloud_name/image/upload/v1234567/folder/filename.pdf
-            from urllib.parse import urlparse
+            # IMPORTANTE: Para archivos PDF, necesitamos usar 'raw' en lugar de 'image'
+            if 'image/upload' in archivo_url:
+                # Convertir URL de image a raw
+                archivo_url = archivo_url.replace('image/upload', 'raw/upload')
+                print(f"🔄 URL convertida a raw: {archivo_url}")
             
-            parsed_url = urlparse(url_completa)
+            # Agregar parámetros de autenticación si es necesario
+            # Cloudinary necesita parámetros firmados para archivos raw
+            
+            # Extraer el public_id
+            parsed_url = urlparse(archivo_url)
             path_parts = parsed_url.path.split('/')
             
-            # Encontrar el índice de 'upload' y obtener todo lo que viene después
             try:
                 upload_index = path_parts.index('upload') + 1
-                # Unir todas las partes después de 'upload'
                 public_id_with_version = '/'.join(path_parts[upload_index:])
                 
-                # Remover la versión (v1234567/) si existe
+                # Remover versión si existe (v1/, v123/, etc.)
                 if public_id_with_version.startswith('v'):
-                    # Encontrar el primer / después de la versión
-                    slash_index = public_id_with_version.find('/')
-                    if slash_index != -1:
-                        public_id = public_id_with_version[slash_index + 1:]
+                    first_slash = public_id_with_version.find('/')
+                    if first_slash != -1:
+                        public_id = public_id_with_version[first_slash + 1:]
                     else:
                         public_id = public_id_with_version
                 else:
                     public_id = public_id_with_version
                 
-                # Remover la extensión del archivo
+                # Remover extensión
                 public_id = os.path.splitext(public_id)[0]
                 
+                print(f"🎯 Public ID extraído: {public_id}")
+                
             except ValueError:
-                # Si no encuentra 'upload' en la ruta, usar el nombre del archivo
-                public_id = os.path.splitext(os.path.basename(archivo_field.name))[0]
+                # Fallback: usar el nombre del archivo
+                public_id = producto.archivo.name
+                public_id = os.path.splitext(public_id)[0]
+                print(f"⚠️ Usando public_id alternativo: {public_id}")
             
-            # Generar URL de descarga con el SDK de Cloudinary
-            download_url, options = cloudinary_url(
+            # GENERAR URL FIRMADA para el archivo RAW (PDF)
+            # =============================================
+            timestamp = int(time.time())
+            
+            # Para archivos PDF, usar resource_type='raw'
+            download_url = cloudinary.utils.cloudinary_url(
                 public_id,
+                resource_type='raw',  # ¡IMPORTANTE! Para PDFs usar 'raw'
+                type='upload',
                 format='pdf',
-                flags='attachment',
-                secure=True
-            )
+                secure=True,
+                sign_url=True,  # Firma la URL
+                expires_at=timestamp + 3600,  # Expira en 1 hora
+                flags='attachment'  # Para forzar descarga
+            )[0]
             
-            # Descargar el archivo desde Cloudinary
-            response = requests.get(download_url, timeout=30)
-            response.raise_for_status()
+            print(f"🔐 URL firmada generada: {download_url}")
+            
+            # Descargar el archivo
+            headers = {
+                'User-Agent': 'Mozilla/5.0',
+                'Accept': 'application/pdf, */*'
+            }
+            
+            print(f"⬇️ Descargando archivo...")
+            response = requests.get(download_url, headers=headers, timeout=60)
+            
+            print(f"📊 Status Code: {response.status_code}")
+            print(f"📦 Content-Type: {response.headers.get('content-type')}")
+            print(f"📏 Tamaño: {len(response.content) if response.status_code == 200 else 0} bytes")
+            
+            if response.status_code != 200:
+                print(f"❌ Error en respuesta: {response.text[:200]}")
+                raise Exception(f"Error descargando archivo: {response.status_code}")
             
             # Crear archivo temporal
-            nombre_archivo = f"{producto.nombre.replace(' ', '_')}.pdf"
+            nombre_seguro = producto.nombre.replace(' ', '_').replace('/', '_')
+            nombre_archivo = f"{nombre_seguro}.pdf"
+            
             with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pdf') as tmp_file:
                 tmp_file.write(response.content)
                 tmp_file_path = tmp_file.name
             
+            print(f"💾 Archivo temporal creado: {tmp_file_path}")
+            
+            # Configurar email
+            from_email = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@tudominio.com')
+            print(f"📧 Enviando desde: {from_email}")
+            print(f"📧 Enviando a: {to_email}")
+            
             # Enviar email
             email = EmailMessage(
-                subject=f"Tu partitura: {producto.nombre}",
-                body=f"""Hola,
+                subject=f"🎵 Tu partitura: {producto.nombre}",
+                body=f"""¡Hola!
 
-    Adjunto encontrarás la partitura que has comprado: {producto.nombre}
+    Te enviamos la partitura que has comprado:
 
-    ¡Gracias por tu compra!
+    🎼 **{producto.nombre}**
+    ✍️ **Arreglista:** {producto.arreglista}
+    ⚡ **Dificultad:** {producto.get_dificultad_display()}
+
+    El archivo PDF está adjunto a este correo.
+
+    ¡Gracias por tu compra y que disfrutes de la música!
 
     Saludos,
     Equipo de Partituras""",
-                from_email=os.getenv('DEFAULT_FROM_EMAIL', 'noreply@tudominio.com'),
+                from_email=from_email,
                 to=[to_email]
             )
             
-            # Adjuntar el archivo
+            # Adjuntar archivo
             with open(tmp_file_path, 'rb') as f:
+                file_content = f.read()
                 email.attach(
-                    nombre_archivo,
-                    f.read(),
-                    'application/pdf'
+                    filename=nombre_archivo,
+                    content=file_content,
+                    mimetype='application/pdf'
                 )
             
-            email.send()
+            print("✉️ Enviando email...")
+            email.send(fail_silently=False)
+            print("✅ Email enviado exitosamente")
             
             # Limpiar archivo temporal
             os.unlink(tmp_file_path)
-            
-            print(f"✅ Email enviado exitosamente a {to_email}")
+            print("🧹 Archivo temporal eliminado")
             
         except Exception as e:
             print(f"❌ Error enviando email: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
     def validate_required_fields(self, request, required_fields):
         errors = {}
