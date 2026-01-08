@@ -67,143 +67,55 @@ class CreatePay(APIView):
     def enviar_partitura_email(self, to_email, partitura_id):
         try:
             producto = Producto.objects.get(id=partitura_id)
-            
+
             print(f"📦 Procesando producto: {producto.nombre}")
             print(f"📁 Archivo: {producto.archivo.name}")
-            print(f"🔗 URL original: {producto.archivo.url}")
-            
-            # OPCIÓN 1: Método directo - Usar la URL con autenticación
-            # ========================================================
-            archivo_url = producto.archivo.url
-            
-            # IMPORTANTE: Para archivos PDF, necesitamos usar 'raw' en lugar de 'image'
-            if 'image/upload' in archivo_url:
-                # Convertir URL de image a raw
-                archivo_url = archivo_url.replace('image/upload', 'raw/upload')
-                print(f"🔄 URL convertida a raw: {archivo_url}")
-            
-            # Agregar parámetros de autenticación si es necesario
-            # Cloudinary necesita parámetros firmados para archivos raw
-            
-            # Extraer el public_id
-            parsed_url = urlparse(archivo_url)
-            path_parts = parsed_url.path.split('/')
-            
-            try:
-                upload_index = path_parts.index('upload') + 1
-                public_id_with_version = '/'.join(path_parts[upload_index:])
-                
-                # Remover versión si existe (v1/, v123/, etc.)
-                if public_id_with_version.startswith('v'):
-                    first_slash = public_id_with_version.find('/')
-                    if first_slash != -1:
-                        public_id = public_id_with_version[first_slash + 1:]
-                    else:
-                        public_id = public_id_with_version
-                else:
-                    public_id = public_id_with_version
-                
-                # Remover extensión
-                public_id = os.path.splitext(public_id)[0]
-                
-                print(f"🎯 Public ID extraído: {public_id}")
-                
-            except ValueError:
-                # Fallback: usar el nombre del archivo
-                public_id = producto.archivo.name
-                public_id = os.path.splitext(public_id)[0]
-                print(f"⚠️ Usando public_id alternativo: {public_id}")
-            
-            # GENERAR URL FIRMADA para el archivo RAW (PDF)
-            # =============================================
-            timestamp = int(time.time())
-            
-            # Para archivos PDF, usar resource_type='raw'
-            download_url = cloudinary.utils.cloudinary_url(
-                public_id,
-                resource_type='raw',  # ¡IMPORTANTE! Para PDFs usar 'raw'
-                type='upload',
-                format='pdf',
-                secure=True,
-                sign_url=True,  # Firma la URL
-                expires_at=timestamp + 3600,  # Expira en 1 hora
-                flags='attachment'  # Para forzar descarga
-            )[0]
-            
-            print(f"🔐 URL firmada generada: {download_url}")
-            
-            # Descargar el archivo
-            headers = {
-                'User-Agent': 'Mozilla/5.0',
-                'Accept': 'application/pdf, */*'
-            }
-            
-            print(f"⬇️ Descargando archivo...")
-            response = requests.get(download_url, headers=headers, timeout=60)
-            
-            print(f"📊 Status Code: {response.status_code}")
-            print(f"📦 Content-Type: {response.headers.get('content-type')}")
-            print(f"📏 Tamaño: {len(response.content) if response.status_code == 200 else 0} bytes")
-            
-            if response.status_code != 200:
-                print(f"❌ Error en respuesta: {response.text[:200]}")
-                raise Exception(f"Error descargando archivo: {response.status_code}")
-            
-            # Crear archivo temporal
+
+            producto.archivo.open('rb')
+            file_content = producto.archivo.read()
+            producto.archivo.close()
+
+            if not file_content:
+                raise Exception("Archivo vacío o no accesible")
+
+            print(f"📏 Tamaño archivo: {len(file_content)} bytes")
+
             nombre_seguro = producto.nombre.replace(' ', '_').replace('/', '_')
             nombre_archivo = f"{nombre_seguro}.pdf"
-            
-            with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pdf') as tmp_file:
-                tmp_file.write(response.content)
-                tmp_file_path = tmp_file.name
-            
-            print(f"💾 Archivo temporal creado: {tmp_file_path}")
-            
-            # Configurar email
+
             from_email = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@tudominio.com')
-            print(f"📧 Enviando desde: {from_email}")
-            print(f"📧 Enviando a: {to_email}")
-            
-            # Enviar email
+
             email = EmailMessage(
                 subject=f"🎵 Tu partitura: {producto.nombre}",
                 body=f"""¡Hola!
 
     Te enviamos la partitura que has comprado:
 
-    🎼 **{producto.nombre}**
-    ✍️ **Arreglista:** {producto.arreglista}
-    ⚡ **Dificultad:** {producto.get_dificultad_display()}
+    🎼 {producto.nombre}
+    ✍️ Arreglista: {producto.arreglista}
+    ⚡ Dificultad: {producto.get_dificultad_display()}
 
     El archivo PDF está adjunto a este correo.
 
-    ¡Gracias por tu compra y que disfrutes de la música!
-
-    Saludos,
-    Equipo de Partituras""",
+    ¡Gracias por tu compra!
+    """,
                 from_email=from_email,
                 to=[to_email]
             )
-            
-            # Adjuntar archivo
-            with open(tmp_file_path, 'rb') as f:
-                file_content = f.read()
-                email.attach(
-                    filename=nombre_archivo,
-                    content=file_content,
-                    mimetype='application/pdf'
-                )
-            
+
+            # 📎 Adjuntar archivo directamente
+            email.attach(
+                filename=nombre_archivo,
+                content=file_content,
+                mimetype='application/pdf'
+            )
+
             print("✉️ Enviando email...")
             email.send(fail_silently=False)
             print("✅ Email enviado exitosamente")
-            
-            # Limpiar archivo temporal
-            os.unlink(tmp_file_path)
-            print("🧹 Archivo temporal eliminado")
-            
+
         except Exception as e:
-            print(f"❌ Error enviando email: {str(e)}")
+            print(f"❌ Error enviando email: {e}")
             import traceback
             traceback.print_exc()
 
