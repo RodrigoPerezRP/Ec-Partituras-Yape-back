@@ -14,6 +14,8 @@ import cloudinary
 import cloudinary.api
 from cloudinary.utils import cloudinary_url
 from urllib.parse import urlparse
+import cloudinary.uploader
+
 
 from apps.pagos.models import Pago
 
@@ -71,19 +73,29 @@ class CreatePay(APIView):
             print(f"📦 Procesando producto: {producto.nombre}")
             print(f"📁 Archivo: {producto.archivo.name}")
 
-            producto.archivo.open('rb')
-            file_content = producto.archivo.read()
-            producto.archivo.close()
+            # 🔹 Obtener public_id limpio
+            public_id = os.path.splitext(producto.archivo.name)[0]
+            print(f"🎯 Public ID: {public_id}")
+
+            # 🔹 Descargar archivo vía SDK (firma automática)
+            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            tmp_file.close()
+
+            cloudinary.uploader.download(
+                public_id=public_id,
+                resource_type="raw",
+                target=tmp_file.name
+            )
+
+            print(f"💾 Archivo descargado: {tmp_file.name}")
+
+            with open(tmp_file.name, "rb") as f:
+                file_content = f.read()
 
             if not file_content:
-                raise Exception("Archivo vacío o no accesible")
+                raise Exception("Archivo vacío")
 
-            print(f"📏 Tamaño archivo: {len(file_content)} bytes")
-
-            nombre_seguro = producto.nombre.replace(' ', '_').replace('/', '_')
-            nombre_archivo = f"{nombre_seguro}.pdf"
-
-            from_email = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@tudominio.com')
+            nombre_archivo = f"{producto.nombre.replace(' ', '_')}.pdf"
 
             email = EmailMessage(
                 subject=f"🎵 Tu partitura: {producto.nombre}",
@@ -95,30 +107,29 @@ class CreatePay(APIView):
     ✍️ Arreglista: {producto.arreglista}
     ⚡ Dificultad: {producto.get_dificultad_display()}
 
-    El archivo PDF está adjunto a este correo.
-
     ¡Gracias por tu compra!
     """,
-                from_email=from_email,
+                from_email=os.getenv("DEFAULT_FROM_EMAIL"),
                 to=[to_email]
             )
 
-            # 📎 Adjuntar archivo directamente
             email.attach(
-                filename=nombre_archivo,
-                content=file_content,
-                mimetype='application/pdf'
+                nombre_archivo,
+                file_content,
+                "application/pdf"
             )
 
-            print("✉️ Enviando email...")
             email.send(fail_silently=False)
-            print("✅ Email enviado exitosamente")
+            print("✅ Email enviado")
+
+            os.unlink(tmp_file.name)
 
         except Exception as e:
             print(f"❌ Error enviando email: {e}")
             import traceback
             traceback.print_exc()
 
+    
     def validate_required_fields(self, request, required_fields):
         errors = {}
 
