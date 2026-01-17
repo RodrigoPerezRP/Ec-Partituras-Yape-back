@@ -156,7 +156,6 @@ class CreatePay(APIView):
         return Response({"message": "Algo salio mal en el token"}, status=status.HTTP_400_BAD_REQUEST)
     
 
-
 class ListPartituras(ListAPIView):
     
     queryset = Producto.objects.all()

@@ -14,6 +14,7 @@ class ProductoAdmin(admin.ModelAdmin):
         'tieneFinale',
         'datecreated',
         'categoria',
+        'uuidCode',
     )
 
     list_filter = (
@@ -48,7 +49,7 @@ class ProductoAdmin(admin.ModelAdmin):
                 'dificultad',
                 'arreglista',
                 'categoria',
-                
+                'uuidCode',
             )
         }),
         ('Multimedia', {

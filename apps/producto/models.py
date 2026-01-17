@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils.text import slugify
+import uuid
 
 class CategoriaProducto(models.Model):
 
@@ -16,6 +17,10 @@ class Producto(models.Model):
         ('dificil', 'Difícil'),
     )
 
+    def generar_codigo():
+        return str(uuid.uuid4())
+
+    uuidCode = models.UUIDField(default=generar_codigo,unique=True, null=True, blank=True)
     nombre = models.CharField(max_length=150)
     descripcion = models.TextField()
     precio = models.DecimalField(max_digits=10, decimal_places=2)

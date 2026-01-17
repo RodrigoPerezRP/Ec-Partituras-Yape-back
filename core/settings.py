@@ -1,6 +1,8 @@
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+import dj_database_url 
+
 
 load_dotenv()
 
@@ -8,9 +10,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv('SECRET_KEY')
 
+#Cambiar a True y añadir la url del back
+
 DEBUG = True
 
-ALLOWED_HOSTS = ['philosophical-florence-ecpar-8672eb7c.koyeb.app']
+ALLOWED_HOSTS = ['*']
 
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
@@ -69,14 +73,10 @@ TEMPLATES = [
 WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
-    'default': {
-        'ENGINE': os.getenv('DB_ENGINE'),
-        'NAME': os.getenv('DB_NAME'),
-        'USER': os.getenv('DB_USER'),
-        'PASSWORD': os.getenv('DB_PASSWORD'),
-        'HOST': os.getenv('DB_HOST'),
-        'OPTIONS': {'sslmode': 'require'},
-    }
+    'default': dj_database_url.config(
+        default='postgresql://ecpar_6fic_user:akiaDOXstUimzU7nkZEhqVmHrNAUhQBE@dpg-d5kp5vbe5dus73fki670-a.oregon-postgres.render.com/ecpar_6fic',
+        conn_max_age=600
+    )
 }
 
 
@@ -127,6 +127,7 @@ STORAGES = {
 CORS_ALLOWED_ORIGINS = [
     "https://ec-partituras-yape-front.vercel.app",
 ]
+
 
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
