@@ -14,7 +14,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 
 DEBUG = False
 
-ALLOWED_HOSTS = ['https://ec-partituras-yape-back.onrender.com']
+ALLOWED_HOSTS = ['http://ec-partituras-yape-back.onrender.com']
 
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
