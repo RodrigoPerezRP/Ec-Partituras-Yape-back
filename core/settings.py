@@ -74,7 +74,7 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': dj_database_url.config(
-        default='postgresql://ecpar_6fic_user:akiaDOXstUimzU7nkZEhqVmHrNAUhQBE@dpg-d5kp5vbe5dus73fki670-a.oregon-postgres.render.com/ecpar_6fic',
+        default=os.getenv('DB_RENDER'),
         conn_max_age=600
     )
 }
@@ -128,6 +128,8 @@ CORS_ALLOWED_ORIGINS = [
     "https://ec-partituras-yape-front.vercel.app",
 ]
 
+if DEBUG:
+    CORS_ALLOWED_ORIGINS += "http://localhost:4200"
 
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
